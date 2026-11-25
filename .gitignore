@@ -1,0 +1,38 @@
+# ---- 大文件：视频、模型、压缩包 ----
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.onnx
+*.engine
+*.pt
+*.pth
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# ---- 数据与产物 ----
+samples/
+out/
+calib/
+datasets/
+data/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ---- 编辑器 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# ---- Office 临时文件 ----
+~$*.docx
+~$*.xlsx
+~$*.pptx
