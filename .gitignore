@@ -12,12 +12,10 @@
 *.tar.gz
 *.7z
 
-# ---- 数据与产物 ----
-samples/
+# ---- 产物目录（samples/ calib/ 保留，作为演示与校准数据）----
 out/
-calib/
-datasets/
-data/
+build/
+build-*/
 
 # ---- Python ----
 __pycache__/

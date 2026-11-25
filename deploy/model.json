@@ -1,0 +1,27 @@
+{
+  "model": "model.onnx",
+  "note": "tta_rotations=4（0/90/180/270 平均），阈值取自项目 manifest，未改动",
+  "image_size": 512,
+  "tta_rotations": 4,
+  "thresholds": {
+    "image": 0.07653932418917847,
+    "pixel": 0.09022261202335358
+  },
+  "calib": {
+    "n": 60,
+    "mean": 0.04644564626117547,
+    "std": 0.012936017980720404,
+    "target_fpr": 0.01,
+    "method": "gaussian"
+  },
+  "test": {
+    "image_auroc": 0.9729,
+    "pixel_auroc": 0.9928,
+    "pro_fpr5": 0.957,
+    "overkill_fpr": 0.0244,
+    "recall": 0.7563,
+    "n_test": 160,
+    "n_good": 41,
+    "n_defect": 119
+  }
+}

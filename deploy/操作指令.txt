@@ -1,0 +1,143 @@
+========================================================================
+ NutSight GPU 版（TensorRT）—— 板子上照抄的指令清单
+ 目标：Jetson Orin Nano，L4T 35.4.1 / JetPack 5.1.2 / TensorRT 8.5 / CUDA 11.4
+========================================================================
+
+【准备】把 D:\Desktop\quexian 整个文件夹拷到 U 盘
+    U 盘插到板子上，先看挂载点：
+
+        ls /media/nima123456/
+        df -h /
+
+    确认 / 还剩 ≥ 800 MB（引擎文件约 100~200 MB，临时文件还要一点）。
+
+------------------------------------------------------------------------
+【第 1 步】拷进板子
+
+        cp -r /media/nima123456/UDISK/quexian ~/quexian
+        cd ~/quexian
+        ls
+
+    应该看到：model.onnx  model.json  samples  calib  src  third_party
+              build.sh  check_env.sh  run.sh  CMakeLists.txt  README.md
+              （README.md 建议用 cat 看：cat README.md）
+
+    注意：如果 U 盘里叫「缺陷」而不是 queixian，就把上面的 quexian 换成实际名字。
+
+------------------------------------------------------------------------
+【第 2 步】环境自检（必须先跑，30 秒）
+
+        chmod +x *.sh
+        ./check_env.sh
+
+    判读：
+      ✅ 看到 libnvinfer.so.8 / libnvonnxparsers.so.8 / libcudart.so.11.0
+         → 环境齐了，直接进第 3 步
+
+      ❌ "没有 libnvinfer.so*"
+         → 板子没装 TensorRT，先装（有网）：
+
+              sudo apt-get update
+              sudo apt-get install -y nvidia-tensorrt
+
+           没网的话，参考 README.md 第六节（用 SDK Manager 下 deb 拷进去），
+           或者先用 CPU 版（D:\Desktop\缺陷）顶上。
+
+      ⚠️ 有 libcudart 但没有 cuda_runtime_api.h → 不用管，本包自带兜底头文件
+
+------------------------------------------------------------------------
+【第 3 步】编译（1~3 分钟）
+
+        ./build.sh
+
+    最后看到 "[完成] 可执行文件：/home/nima123456/quexian/build/nutsight-cli"
+    就成功了。
+
+    如果报错，把 build.sh 输出的**最后 10 行**截图发我。
+
+------------------------------------------------------------------------
+【第 4 步】跑样例（第一次会建 FP16 引擎，3~10 分钟）
+
+        ./run.sh
+
+    期望输出：
+
+        good_000.png          OK   score=0.0407  热区 0.00%
+        good_001.png          OK   score=0.0455  热区 0.00%
+        scratch_head_000.png  NG   score=0.0852  热区 0.57%
+        thread_side_000.png   OK   score=0.0498  热区 0.00%
+
+    标注图在 out/*_result.jpg。
+    引擎文件生成后是 model.fp16.engine，下次启动只要 2~3 秒加载。
+
+    ※ 分数必须和上面一致（±0.001）。
+      如果差很多，先 ./run.sh --fp32 再试一次，把两次输出都发我。
+
+------------------------------------------------------------------------
+【第 5 步】INT8 量化（想更快就做，可选）
+
+        ./run.sh --int8
+
+    流程：用 calib/ 里 60 张正常样本做熵校准 → 生成 model.int8.engine + .calib 缓存。
+    第一次约 3~10 分钟。
+
+    ⚠️ INT8 会改变分数分布，务必对比 4 张样例的分数：
+       - 判定（OK/NG）没变 → 可以用
+       - 判定变了或差很多 → 把输出发我，我按 INT8 的实际分数重标阈值
+    临时改阈值（不改文件）：
+
+        ./run.sh --int8 --thr-image 0.08 --thr-pixel 0.09
+
+------------------------------------------------------------------------
+【第 6 步】日常用法
+
+    单张：
+        ./run.sh --image ~/图片/a.png
+
+    整个目录 + 结果图 + JSON：
+        ./run.sh --dir ~/图片 --save-dir out --json out/result.json
+
+    视频（每 2 帧检测 1 帧）：
+        ./run.sh --video ~/产线.mp4 --stride 2 --csv out/frames.csv
+
+    速度对比（同一条命令换精度）：
+        ./run.sh --fp32      # 最慢，最准
+        ./run.sh             # FP16，推荐
+        ./run.sh --int8      # 最快，需复核精度
+
+    强制重建引擎（换了模型/精度/设备后）：
+        ./run.sh --rebuild
+
+------------------------------------------------------------------------
+【报错速查】
+
+    "找不到 libnvinfer.so"
+        → TensorRT 没装，见第 2 步
+
+    "deserializeCudaEngine 失败 / 反序列化引擎失败"
+        → 引擎是在别的机器或别的版本上建的：./run.sh --rebuild
+
+    "CUDA 调用失败（cudaMalloc…）"
+        → 显存不够：关掉浏览器/桌面程序，或 ./run.sh --workspace 512
+
+    "ONNX 解析失败"
+        → model.onnx 没拷完整，重新拷一次（比对大小：157 MB = 164,981,093 字节）
+
+    建引擎卡在 "[build] 用 model.onnx 构建 fp16 引擎…" 很久
+        → Orin Nano 建 PatchCore 引擎就是慢，10 分钟内都算正常，别 Ctrl+C
+
+    程序能跑但很慢（>2 s/张）
+        → 先确认没有落到 CPU：运行时第一行会打印 "精度 fp16 引擎 model.fp16.engine（复用）"，
+          同时 ./check_env.sh 里应能看到 libnvinfer。若都正常，用 tegrastats 看 GPU 占用：
+              tegrastats --interval 1000
+              （能看到 GR3D_FREQ 有波动 = GPU 在工作）
+
+------------------------------------------------------------------------
+【性能参考】
+
+    笔记本 RTX 5060（CUDA EP 对照）   254 ms/张
+    Jetson Orin Nano CPU 版（旧包）    16.2 s/张（TTA×4）
+    Jetson Orin Nano GPU 版           待你实测（FP16 预期 0.3~0.8 s/张）
+
+    实测完把 ./run.sh 的最后一行"平均 xx ms/张"发我，我写进文档。
+========================================================================
